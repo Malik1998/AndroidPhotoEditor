@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:id="@+id/parent_layout"
+    tools:context=".MainActivity">
+
+    <ImageView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/teal_700"
+        android:elevation="2dp"
+        android:id="@+id/imageView"
+        />
+    <ImageView
+        android:id="@+id/imageViewDraw"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:elevation="3dp" />
+
+
+    <Button
+        android:id="@+id/image_capture_button"
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:layout_marginBottom="50dp"
+        android:layout_marginStart="10dp"
+        android:elevation="2dp"
+        android:background="@mipmap/camera"
+        android:text="@string/take_photo"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintLeft_toLeftOf="parent"
+ />
+
+    <Button
+        android:id="@+id/change_camera"
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:layout_marginBottom="50dp"
+        android:layout_marginStart="10dp"
+        android:background="@mipmap/reverse"
+        android:elevation="2dp"
+        android:text="@string/change_camera"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toEndOf="@id/image_capture_button" />
+
+    <Button
+        android:id="@+id/open_editor"
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:layout_marginBottom="50dp"
+        android:layout_marginStart="10dp"
+        android:background="@mipmap/editor"
+        android:elevation="2dp"
+        app:layout_constraintStart_toEndOf="@id/change_camera"
+        app:layout_constraintBottom_toBottomOf="parent"
+        android:text="@string/editor" />
+
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/editors_layout"
+        android:layout_width="120dp"
+        android:layout_height="match_parent"
+        android:layout_marginEnd="5dp"
+        android:elevation="2dp"
+        app:layout_constraintEnd_toEndOf="@id/parent_layout">
+
+        <Button
+            android:id="@+id/lips"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_marginStart="20dp"
+            android:layout_marginTop="20dp"
+            android:background="@mipmap/lips"
+            android:elevation="4dp"
+            android:text="@string/lips"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintLeft_toLeftOf="parent" />
+
+        <Button
+            android:id="@+id/glasses_add"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_marginStart="20dp"
+            android:layout_marginBottom="50dp"
+            android:background="@mipmap/glasses"
+            android:elevation="4dp"
+            android:text="@string/add_glasses"
+            app:layout_constraintTop_toBottomOf="@id/lips"
+            app:layout_constraintLeft_toLeftOf="@id/editors_layout" />
+
+        <Button
+            android:id="@+id/eye_lashes"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_marginStart="20dp"
+            android:layout_marginBottom="50dp"
+            android:background="@mipmap/eye_lash"
+            android:elevation="4dp"
+            android:text="@string/add_eye_lashes"
+            app:layout_constraintTop_toBottomOf="@id/glasses_add"
+            app:layout_constraintLeft_toLeftOf="@id/editors_layout" />
+
+        <Button
+            android:id="@+id/ears"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_marginStart="20dp"
+            android:layout_marginBottom="50dp"
+            android:background="@mipmap/ears"
+            android:elevation="4dp"
+            android:text="@string/ears"
+            app:layout_constraintTop_toBottomOf="@id/eye_lashes"
+            app:layout_constraintLeft_toLeftOf="@id/editors_layout"/>
+
+        <Button
+            android:id="@+id/beta_version"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_marginStart="20dp"
+            android:layout_marginBottom="50dp"
+            android:background="@mipmap/testing"
+            android:elevation="4dp"
+            android:text="@string/beta_version"
+            app:layout_constraintTop_toBottomOf="@id/ears"
+            app:layout_constraintLeft_toLeftOf="@id/editors_layout"/>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/vertical_centerline"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintGuide_percent=".50" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>
