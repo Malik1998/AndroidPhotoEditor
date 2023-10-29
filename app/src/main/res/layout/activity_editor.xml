@@ -17,17 +17,18 @@
         app:layout_constraintLeft_toLeftOf="@id/parent_layout"
         app:layout_constraintBottom_toTopOf="@id/image_save_button"
         app:layout_constraintTop_toTopOf="@id/parent_layout"
-        android:elevation="2dp" />
+        android:elevation="2dp"
+        android:importantForAccessibility="no" />
 
     <ImageView
         android:id="@+id/imageViewDraw"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:elevation="3dp"
-        app:layout_constraintRight_toLeftOf="@id/vertical_centerline"
-        app:layout_constraintLeft_toLeftOf="@id/parent_layout"
-        app:layout_constraintBottom_toTopOf="@id/image_save_button"
-        app:layout_constraintTop_toTopOf="@id/parent_layout"
+        app:layout_constraintTop_toTopOf="@id/imageViewEditor"
+        app:layout_constraintLeft_toLeftOf="@id/imageViewEditor"
+        app:layout_constraintBottom_toBottomOf="@id/imageViewEditor"
+        app:layout_constraintRight_toRightOf="@id/imageViewEditor"
         android:importantForAccessibility="no" />
 
     <Button

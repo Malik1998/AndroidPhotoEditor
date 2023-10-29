@@ -95,7 +95,7 @@ class Editor : AppCompatActivity() {
     @Volatile
     private var widthFace: Int = 0
 
-    private val CONTEXT_INFO_SIZE = 200
+    private val CONTEXT_INFO_SIZE = 40
 
     @Composable
     fun LoaderOfFolder() {
@@ -125,12 +125,13 @@ class Editor : AppCompatActivity() {
                 minOf(viewBinding.imageViewEditor.height, curImage!!.height), matrix, true
             )
 
-            if (upperBitmap != null) {
-                upperBitmap!!.eraseColor(Color.TRANSPARENT)
-                viewBinding.imageViewDraw.setImageBitmap(
-                    upperBitmap!!.copy(upperBitmap!!.config, false)
-                )
-            }
+
+            upperBitmap = Bitmap.createBitmap(
+                curImage!!, 0, 0,
+                minOf(viewBinding.imageViewEditor.width, curImage!!.width),
+                minOf(viewBinding.imageViewEditor.height, curImage!!.height), matrix, true
+            )
+            upperBitmap!!.eraseColor(Color.TRANSPARENT)
 
             viewBinding.imageViewEditor.setImageBitmap(curImage)
         }
@@ -160,22 +161,18 @@ class Editor : AppCompatActivity() {
 
     private fun getCanvas(currentImage: Bitmap?): Canvas {
         upperBitmap = Bitmap.createBitmap(
-            currentImage!!.width,
-            currentImage.height, conf
+            upperBitmap!!.width,
+            upperBitmap!!.height, conf
         )
         return Canvas(upperBitmap!!)
     }
 
     private fun processImage() {
-        val currentImage = curImage
         val canvas = getCanvas(currentImage = curImage)
-        if (curImgText == ImageEditor.NONE) {
-            return
-        }
         val resized =
             Bitmap.createScaledBitmap(
-                currentImage!!, currentImage.width / MULT_IMAGE,
-                currentImage.height / MULT_IMAGE, true
+                curImage!!, curImage!!.width / MULT_IMAGE,
+                curImage!!.height / MULT_IMAGE, true
             )
         val imgML = InputImage.fromBitmap(resized, 0)
 
@@ -221,7 +218,7 @@ class Editor : AppCompatActivity() {
                         .show()
                 }
 
-            val imgMLSegmenter = InputImage.fromBitmap(currentImage, 0)
+            val imgMLSegmenter = InputImage.fromBitmap(curImage!!, 0)
             segmenter.process(imgMLSegmenter)
                 .addOnSuccessListener { results ->
                     mask = results.buffer
@@ -241,12 +238,10 @@ class Editor : AppCompatActivity() {
             ImageEditor.processRequestEditing(
                 baseContext, curImgText,
                 mapLandMarks, upperBitmap!!, canvas,
-                resources, heightFace, widthFace, currentImage,
+                resources, heightFace, widthFace, curImage!!,
                 mask = mask, maskWidth = maskWidth, maskHeight = maskHeight, drawedThings
             )
-            synchronized(drawedThings) {
-                reDraw(canvas)
-            }
+            reDraw(canvas)
         }
 //        viewBinding.imageViewDraw.setImageBitmap(
 //            upperBitmap!!.copy(upperBitmap!!.config, false)
@@ -268,18 +263,23 @@ class Editor : AppCompatActivity() {
                 ),
                 elem.positionAndSize.mirror,
                 elem.positionAndSize.width,
-                elem.positionAndSize.height
+                elem.positionAndSize.height,
+                elem.positionAndSize.leftX.toFloat(),
+                elem.positionAndSize.leftY.toFloat()
             )
         }
-        viewBinding.imageViewEditor.setImageBitmap(curImage)
-        viewBinding.imageViewDraw.setImageBitmap(
-            upperBitmap!!.copy(upperBitmap!!.config, false)
-        )
+        viewBinding.imageViewDraw.setImageBitmap(upperBitmap)
     }
     
     fun processContextInfo(event: MotionEvent): Boolean {
+        if(event.action == MotionEvent.ACTION_DOWN) {
+            return true
+        }
         Log.e("SOME_CONTEXT_INFO_PROCESSING", contextIndex.toString())
-        Log.e("SOME_CONTEXT_INFO_PROCESSING", drawedThings.toString())
+        Log.e("SOME_CONTEXT_INFO_PROCESSING", drawedIndex.toString())
+        for(elem in drawedThings) {
+            Log.e("SOME_CONTEXT_INFO_PROCESSING", elem.toString())
+        }
         Log.e("SOME_CONTEXT_INFO_PROCESSING", event.x.toString())
         Log.e("SOME_CONTEXT_INFO_PROCESSING", event.y.toString())
         var processed = false
