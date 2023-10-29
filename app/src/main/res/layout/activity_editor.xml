@@ -9,17 +9,26 @@
     tools:context=".Editor">
 
     <ImageView
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="@mipmap/ic_launcher"
-        android:elevation="2dp"
         android:id="@+id/imageViewEditor"
-        />
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@mipmap/ic_launcher"
+        app:layout_constraintRight_toLeftOf="@id/vertical_centerline"
+        app:layout_constraintLeft_toLeftOf="@id/parent_layout"
+        app:layout_constraintBottom_toTopOf="@id/image_save_button"
+        app:layout_constraintTop_toTopOf="@id/parent_layout"
+        android:elevation="2dp" />
+
     <ImageView
         android:id="@+id/imageViewDraw"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:elevation="3dp" />
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:elevation="3dp"
+        app:layout_constraintRight_toLeftOf="@id/vertical_centerline"
+        app:layout_constraintLeft_toLeftOf="@id/parent_layout"
+        app:layout_constraintBottom_toTopOf="@id/image_save_button"
+        app:layout_constraintTop_toTopOf="@id/parent_layout"
+        android:importantForAccessibility="no" />
 
     <Button
         android:id="@+id/image_save_button"
@@ -30,8 +39,8 @@
         android:elevation="2dp"
         android:text="@string/save_photo"
         android:background="@mipmap/save"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="@id/imageViewEditor"
+        app:layout_constraintBottom_toBottomOf="@id/parent_layout"
+        app:layout_constraintStart_toStartOf="@id/parent_layout"
         />
 
     <Button
@@ -123,6 +132,6 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        app:layout_constraintGuide_percent=".50" />
+        app:layout_constraintGuide_percent="0.7" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

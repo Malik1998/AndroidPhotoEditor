@@ -2,6 +2,7 @@ package com.example.myapplication
 
 import android.Manifest
 import android.R.attr.orientation
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -15,6 +16,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Log
+import android.view.MotionEvent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -22,7 +24,12 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.geometry.Offset
 import androidx.core.content.ContextCompat
+import com.example.myapplication.ImageEditor.Companion.EARS
+import com.example.myapplication.ImageEditor.Companion.EYE_LASH
+import com.example.myapplication.ImageEditor.Companion.GLASSES
+import com.example.myapplication.ImageEditor.Companion.drawImgPoint
 import com.example.myapplication.databinding.ActivityEditorBinding
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
@@ -36,6 +43,7 @@ import com.google.mlkit.vision.segmentation.Segmenter
 import com.google.mlkit.vision.segmentation.selfie.SelfieSegmenterOptions
 import java.nio.ByteBuffer
 import java.util.Collections
+import kotlin.math.abs
 
 
 class Editor : AppCompatActivity() {
@@ -54,14 +62,27 @@ class Editor : AppCompatActivity() {
     private lateinit var poseDetector: PoseDetector
     private lateinit var segmenter: Segmenter
 
-    private val defaultImgId = R.mipmap.female
-    private val IS_DEBUG = false
+    private val defaultImgId = R.mipmap.person_photo
+    private val IS_DEBUG = true
 
     private val MULT_IMAGE = 2
 
     private val conf: Bitmap.Config = Bitmap.Config.ARGB_8888 // see other conf types
 
     private val mapLandMarks = Collections.synchronizedMap(hashMapOf<Int, PointF>())
+
+
+    private val drawedThings = Collections.synchronizedList(ArrayList<ImgInstance>())
+    private var contextIndex = -1
+    private var drawedIndex = -1
+
+    private val OFFSET = 10
+
+    private val mapImgs = hashMapOf<ExtraImgs, Int>(
+        ExtraImgs.EYE_LASH to R.mipmap.eye_lash,
+        ExtraImgs.GLASSES to R.mipmap.glasses,
+        ExtraImgs.EARS to R.mipmap.ears,
+        ExtraImgs.CONTEXT_INFO to R.mipmap.remove)
 
 
     @Volatile
@@ -73,6 +94,8 @@ class Editor : AppCompatActivity() {
     private var heightFace: Int = 0
     @Volatile
     private var widthFace: Int = 0
+
+    private val CONTEXT_INFO_SIZE = 200
 
     @Composable
     fun LoaderOfFolder() {
@@ -89,12 +112,19 @@ class Editor : AppCompatActivity() {
             } else if (rotation == 8) {
                 matrix.postRotate(270f)
             }
-            if (curImage != null) {
-                curImage = Bitmap.createBitmap(
-                    curImage!!, 0, 0,
-                    curImage!!.getWidth(), curImage!!.getHeight(), matrix, true
-                )
+
+            if (curImage == null || IS_DEBUG) {
+                val person = BitmapFactory.decodeResource(resources, defaultImgId)
+                curImage = person.copy(person.config, true)
+
             }
+
+            curImage = Bitmap.createBitmap(
+                curImage!!, 0, 0,
+                minOf(viewBinding.imageViewEditor.width, curImage!!.width),
+                minOf(viewBinding.imageViewEditor.height, curImage!!.height), matrix, true
+            )
+
             if (upperBitmap != null) {
                 upperBitmap!!.eraseColor(Color.TRANSPARENT)
                 viewBinding.imageViewDraw.setImageBitmap(
@@ -119,29 +149,32 @@ class Editor : AppCompatActivity() {
 
     private fun setFilter(context: Context, name: String) {
         synchronized(context) {
-            if (upperBitmap != null) {
-                upperBitmap!!.eraseColor(Color.TRANSPARENT)
-            }
+//            if (upperBitmap != null) {
+//                upperBitmap!!.eraseColor(Color.TRANSPARENT)
+//            }
             curImgText = if (curImgText != name) name else ImageEditor.NONE
             processImage()
         }
     }
 
-    private fun processImage() {
-        val person = BitmapFactory.decodeResource(resources, defaultImgId)
-        val currentImage = if (IS_DEBUG) person.copy(person.config, true) else curImage
-        curImage = currentImage!!.copy(currentImage.config, true)
+
+    private fun getCanvas(currentImage: Bitmap?): Canvas {
         upperBitmap = Bitmap.createBitmap(
-            currentImage.width,
+            currentImage!!.width,
             currentImage.height, conf
         )
-        var canvas = Canvas(upperBitmap!!)
+        return Canvas(upperBitmap!!)
+    }
+
+    private fun processImage() {
+        val currentImage = curImage
+        val canvas = getCanvas(currentImage = curImage)
         if (curImgText == ImageEditor.NONE) {
             return
         }
         val resized =
             Bitmap.createScaledBitmap(
-                currentImage, currentImage.width / MULT_IMAGE,
+                currentImage!!, currentImage.width / MULT_IMAGE,
                 currentImage.height / MULT_IMAGE, true
             )
         val imgML = InputImage.fromBitmap(resized, 0)
@@ -204,18 +237,88 @@ class Editor : AppCompatActivity() {
                 }
         }
 //        Toast.makeText(baseContext, "editing image", Toast.LENGTH_SHORT).show()
-        ImageEditor.processRequestEditing(
-            baseContext, curImgText,
-            mapLandMarks, upperBitmap!!, canvas,
-            resources, heightFace, widthFace, currentImage,
-            mask = mask, maskWidth = maskWidth, maskHeight = maskHeight
-        )
+        synchronized(applicationContext) {
+            ImageEditor.processRequestEditing(
+                baseContext, curImgText,
+                mapLandMarks, upperBitmap!!, canvas,
+                resources, heightFace, widthFace, currentImage,
+                mask = mask, maskWidth = maskWidth, maskHeight = maskHeight, drawedThings
+            )
+            synchronized(drawedThings) {
+                reDraw(canvas)
+            }
+        }
+//        viewBinding.imageViewDraw.setImageBitmap(
+//            upperBitmap!!.copy(upperBitmap!!.config, false)
+//        )
+    }
+
+    fun isClose(instance: ImgInstance, event: MotionEvent): Boolean {
+        return ((abs(event.x - instance.positionAndSize.leftX) <= OFFSET + instance.positionAndSize.width) and
+                (abs(event.y - instance.positionAndSize.leftY) <= OFFSET + instance.positionAndSize.height))
+    }
+
+    fun reDraw(canvas: Canvas) {
+        for (elem in drawedThings) {
+            val curPoint = PointF(elem.positionAndSize.leftX.toFloat(), elem.positionAndSize.leftY.toFloat())
+            drawImgPoint(curPoint, curPoint, canvas,
+                BitmapFactory.decodeResource(
+                    resources,
+                    mapImgs.get(elem.extraImg)!!
+                ),
+                elem.positionAndSize.mirror,
+                elem.positionAndSize.width,
+                elem.positionAndSize.height
+            )
+        }
+        viewBinding.imageViewEditor.setImageBitmap(curImage)
         viewBinding.imageViewDraw.setImageBitmap(
             upperBitmap!!.copy(upperBitmap!!.config, false)
         )
-//        Toast.makeText(baseContext, "changed image", Toast.LENGTH_SHORT).show()
+    }
+    
+    fun processContextInfo(event: MotionEvent): Boolean {
+        Log.e("SOME_CONTEXT_INFO_PROCESSING", contextIndex.toString())
+        Log.e("SOME_CONTEXT_INFO_PROCESSING", drawedThings.toString())
+        Log.e("SOME_CONTEXT_INFO_PROCESSING", event.x.toString())
+        Log.e("SOME_CONTEXT_INFO_PROCESSING", event.y.toString())
+        var processed = false
+        if (contextIndex != -1) {
+            val contInfo = drawedThings[contextIndex]
+            if(isClose(drawedThings[contextIndex], event)) {
+                val toDel = drawedThings[drawedIndex]
+                drawedThings.remove(toDel)
+                processed = true
+            }
+            drawedThings.remove(contInfo)
+            drawedIndex = -1
+            contextIndex = -1
+
+
+        }
+        if (!processed) {
+            for ((i, elem) in drawedThings.withIndex()) {
+                if (isClose(elem, event)) {
+                    drawedThings.add(
+                        ImgInstance(
+                            ExtraImgs.CONTEXT_INFO, PositionAndSize(
+                                elem.positionAndSize.leftX,
+                                elem.positionAndSize.leftX, CONTEXT_INFO_SIZE, CONTEXT_INFO_SIZE
+                            )
+                        )
+                    )
+                    contextIndex = drawedThings.size - 1
+                    drawedIndex = i
+                    break
+                }
+            }
+        }
+        reDraw(getCanvas(currentImage = curImage))
+        return true
     }
 
+
+    @SuppressLint("ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         viewBinding = ActivityEditorBinding.inflate(layoutInflater)
@@ -224,6 +327,8 @@ class Editor : AppCompatActivity() {
             setContentView(viewBinding.root)
             viewBinding
             LoaderOfFolder()
+
+            viewBinding.imageViewDraw.setOnTouchListener { v, motionEvent -> processContextInfo(motionEvent)}
 
             viewBinding.imageSaveButton.setOnClickListener {
                 ImageSaver.savePhotoWithBackground(curImage!!, upperBitmap!!, contentResolver)

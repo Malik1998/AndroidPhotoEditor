@@ -22,6 +22,7 @@ class ImageEditor {
 
     companion object {
 
+
         val EYE_LASH = "eye_lash"
         val GLASSES = "glasses"
         val EARS = "ears"
@@ -86,7 +87,7 @@ class ImageEditor {
                                   canvas: Canvas, resources: Resources,
                                   heightFace: Int, widthFace: Int, currentImage: Bitmap,
                                   mask: ByteBuffer? = null, maskWidth: Int = 128,
-                                  maskHeight: Int = 128) {
+                                  maskHeight: Int = 128, drawedThings: MutableList<ImgInstance> = ArrayList<ImgInstance>()) {
             val leftEyePoint = map.getOrDefault(FaceLandmark.LEFT_EYE, null)
             val rightEyePoint = map.getOrDefault(FaceLandmark.RIGHT_EYE, null)
             val leftEarPoint = map.getOrDefault(FaceLandmark.LEFT_EAR, null)
@@ -105,45 +106,52 @@ class ImageEditor {
                 when (curImgText) {
                     EYE_LASH -> {
                         if (leftEyePoint != null && rightEyePoint != null) {
-                            bitMap.eraseColor(Color.TRANSPARENT)
-                            drawImgPoint(
-                                leftEyePoint,
-                                rightEyePoint,
-                                canvas,
-                                BitmapFactory.decodeResource(
-                                    resources,
-                                    mapImgs.get(curImgText)!!
-                                ),
-                                imgWidth = Math.min(
-                                    Math.max(
-                                        Math.abs(leftEyePoint.x - rightEyePoint.x) * 0.6f,
-                                        10f
-                                    ), bitMap.width / 1.5f
-                                ).toInt(),
-                                imgHeight = heightFace / 20,
-                                leftXPrev = leftEyePoint.x - Math.abs(leftEyePoint.x - rightEyePoint.x) * 0.3f,
-                                leftYPrev = leftEyePoint.y - heightFace * 0.025f,
-                            )
+//                            bitMap.eraseColor(Color.TRANSPARENT)
+                            val width = Math.min(
+                                Math.max(
+                                    Math.abs(leftEyePoint.x - rightEyePoint.x) * 0.6f,
+                                    10f
+                                ), bitMap.width / 1.5f
+                            ).toInt()
+                            val height = heightFace / 20
+                            val x = leftEyePoint.x - Math.abs(leftEyePoint.x - rightEyePoint.x) * 0.3f
+                            val y = leftEyePoint.y - heightFace * 0.025f
+//                            drawImgPoint(
+//                                leftEyePoint,
+//                                rightEyePoint,
+//                                canvas,
+//                                BitmapFactory.decodeResource(
+//                                    resources,
+//                                    mapImgs.get(curImgText)!!
+//                                ),
+//                                imgWidth = width,
+//                                imgHeight = height,
+//                                leftXPrev = x,
+//                                leftYPrev = y,
+//                            )
 
-                            drawImgPoint(
-                                leftEyePoint,
-                                rightEyePoint,
-                                canvas,
-                                BitmapFactory.decodeResource(
-                                    resources,
-                                    mapImgs.get(curImgText)!!
-                                ),
-                                imgWidth = Math.min(
-                                    Math.max(
-                                        Math.abs(leftEyePoint.x - rightEyePoint.x) * 0.6f,
-                                        10f
-                                    ), bitMap.width / 1.5f
-                                ).toInt(),
-                                imgHeight = heightFace / 20,
-                                leftXPrev = rightEyePoint.x - Math.abs(leftEyePoint.x - rightEyePoint.x) * 0.3f,
-                                leftYPrev = rightEyePoint.y - heightFace * 0.025f,
-                                mirror = true
-                            )
+                            val x2 = rightEyePoint.x - Math.abs(leftEyePoint.x - rightEyePoint.x) * 0.3f
+                            val y2 = rightEyePoint.y - heightFace * 0.025f
+                            drawedThings.add(ImgInstance(extraImg = ExtraImgs.EYE_LASH,
+                                positionAndSize = PositionAndSize(x.toInt(), y.toInt(), width =  width, height = height)))
+
+                            drawedThings.add(ImgInstance(extraImg = ExtraImgs.EYE_LASH,
+                                positionAndSize = PositionAndSize(x2.toInt(), y2.toInt(), width =  width, height = height, mirror = true)))
+
+//                            drawImgPoint(
+//                                leftEyePoint,
+//                                rightEyePoint,
+//                                canvas,
+//                                BitmapFactory.decodeResource(
+//                                    resources,
+//                                    mapImgs.get(curImgText)!!
+//                                ),
+//                                imgWidth = width,
+//                                imgHeight = height,
+//                                leftXPrev = x2,
+//                                leftYPrev = y2,
+//                                mirror = true
+//                            )
                         }
 
                     }
@@ -151,7 +159,7 @@ class ImageEditor {
                     GLASSES -> {
                         if (leftEyePoint != null && rightEyePoint != null) {
 
-                            bitMap.eraseColor(Color.TRANSPARENT)
+//                            bitMap.eraseColor(Color.TRANSPARENT)
                             val imgWidth = Math.min(
                                 Math.max(
                                     Math.abs(leftEyePoint.x - rightEyePoint.x) * 2.2f,
@@ -159,63 +167,79 @@ class ImageEditor {
                                 ), widthFace.toFloat()
                             ).toInt()
                             val imgHeight = heightFace * 2 / 5
-                            drawImgPoint(
-                                leftEyePoint,
-                                rightEyePoint,
-                                canvas,
-                                BitmapFactory.decodeResource(
-                                    resources,
-                                    mapImgs.get(curImgText)!!
-                                ),
-                                imgWidth = imgWidth,
-                                imgHeight = imgHeight,
-                                leftYPrev = rightEyePoint.y - imgHeight * 0.5f,
-                                leftXPrev = leftEyePoint.x - imgWidth / 4,
-                            )
+                            val y = rightEyePoint.y - imgHeight * 0.25f
+                            val x = leftEyePoint.x - imgWidth / 17
+                            drawedThings.add(ImgInstance(extraImg = ExtraImgs.GLASSES,
+                                positionAndSize = PositionAndSize(x.toInt(), y.toInt(), width = imgWidth, height = imgHeight)))
+
+//                            drawImgPoint(
+//                                leftEyePoint,
+//                                rightEyePoint,
+//                                canvas,
+//                                BitmapFactory.decodeResource(
+//                                    resources,
+//                                    mapImgs.get(curImgText)!!
+//                                ),
+//                                imgWidth = imgWidth,
+//                                imgHeight = imgHeight,
+//                                leftYPrev = y,
+//                                leftXPrev = x,
+//                            )
                         }
                     }
 
                     EARS -> {
                         if (leftEarPoint != null && rightEarPoint != null) {
-                            bitMap.eraseColor(Color.TRANSPARENT)
+//                            bitMap.eraseColor(Color.TRANSPARENT)
                             val earWidth = Math.min(
                                 Math.max(
                                     Math.abs(leftEarPoint.x - rightEarPoint.x) * 0.3f,
                                     10f
                                 ), bitMap.width / 1.5f
                             ).toInt()
-                            val earHeight = heightFace / 2
-                            val leftXPrevOffset = (earWidth / 1.1).toInt()
+                            val earHeight = heightFace / 3
+                            val leftXPrevOffset = (earWidth / 1.4).toInt()
                             val leftYPrevOffset = earHeight
-                            drawImgPoint(
-                                leftEarPoint,
-                                rightEarPoint,
-                                canvas,
-                                BitmapFactory.decodeResource(
-                                    resources,
-                                    mapImgs.get(curImgText)!!
-                                ),
-                                imgWidth = earWidth,
-                                imgHeight = earHeight,
-                                leftXPrev = leftEarPoint.x - leftXPrevOffset,
-                                leftYPrev = leftEarPoint.y - leftYPrevOffset,
-                                mirror = false
-                            )
 
-                            drawImgPoint(
-                                leftEarPoint,
-                                rightEarPoint,
-                                canvas,
-                                BitmapFactory.decodeResource(
-                                    resources,
-                                    mapImgs.get(curImgText)!!
-                                ),
-                                imgWidth = earWidth,
-                                imgHeight = earHeight,
-                                leftXPrev = rightEarPoint.x,//+ leftXPrevOffset,
-                                leftYPrev = rightEarPoint.y - leftYPrevOffset,
-                                mirror = true
-                            )
+                            val x = leftEarPoint.x - leftXPrevOffset
+                            val y = leftEarPoint.y - leftYPrevOffset
+                            drawedThings.add(ImgInstance(extraImg = ExtraImgs.EARS,
+                                positionAndSize = PositionAndSize(x.toInt(), y.toInt(), width = earWidth, height = earHeight)))
+
+
+//                            drawImgPoint(
+//                                leftEarPoint,
+//                                rightEarPoint,
+//                                canvas,
+//                                BitmapFactory.decodeResource(
+//                                    resources,
+//                                    mapImgs.get(curImgText)!!
+//                                ),
+//                                imgWidth = earWidth,
+//                                imgHeight = earHeight,
+//                                leftXPrev = x,,
+//                                leftYPrev = y,
+//                                mirror = false
+//                            )
+
+
+                            drawedThings.add(ImgInstance(extraImg = ExtraImgs.EARS,
+                                positionAndSize = PositionAndSize(rightEarPoint.x.toInt(), (rightEarPoint.y - leftYPrevOffset).toInt(), width = earWidth, height = earHeight, mirror = true)))
+
+//                            drawImgPoint(
+//                                leftEarPoint,
+//                                rightEarPoint,
+//                                canvas,
+//                                BitmapFactory.decodeResource(
+//                                    resources,
+//                                    mapImgs.get(curImgText)!!
+//                                ),
+//                                imgWidth = earWidth,
+//                                imgHeight = earHeight,
+//                                leftXPrev = rightEarPoint.x,//+ leftXPrevOffset,
+//                                leftYPrev = rightEarPoint.y - leftYPrevOffset,
+//                                mirror = true
+//                            )
                         }
                     }
 
@@ -224,7 +248,7 @@ class ImageEditor {
                             && mouthLeftPoint != null
                             && mouthRightPoint != null
                         ) {
-                            bitMap.eraseColor(Color.TRANSPARENT)
+//                            bitMap.eraseColor(Color.TRANSPARENT)
 
 
                             val mouthHeight =
@@ -262,16 +286,20 @@ class ImageEditor {
                                 ), widthFace.toFloat() * 0.6f
                             ).toInt()
                             val imgHeight = (mouthHeight * 2.5).toInt()
-                            drawImgPoint(
-                                mouthLeftPoint,
-                                mouthRightPoint,
-                                canvas,
-                                mouthImg,
-                                imgWidth = imgWidth,
-                                imgHeight = imgHeight,
-                                leftYPrev = mouthLeftPoint.y - imgHeight / 2,
-                                leftXPrev = mouthLeftPoint.x - imgWidth / 8,
-                            )
+                            drawedThings.add(ImgInstance(extraImg = ExtraImgs.LIPS,
+                                positionAndSize = PositionAndSize((mouthLeftPoint.x - imgWidth / 8).toInt(),
+                                    (mouthLeftPoint.y - imgHeight / 2).toInt(), width = imgWidth, height = imgHeight)))
+
+//                            drawImgPoint(
+//                                mouthLeftPoint,
+//                                mouthRightPoint,
+//                                canvas,
+//                                mouthImg,
+//                                imgWidth = imgWidth,
+//                                imgHeight = imgHeight,
+//                                leftYPrev = mouthLeftPoint.y - imgHeight / 2,
+//                                leftXPrev = mouthLeftPoint.x - imgWidth / 8,
+//                            )
                         }
                     }
 
