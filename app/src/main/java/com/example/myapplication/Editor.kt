@@ -95,7 +95,7 @@ class Editor : AppCompatActivity() {
     @Volatile
     private var widthFace: Int = 0
 
-    private val CONTEXT_INFO_SIZE = 40
+    private val CONTEXT_INFO_SIZE = 90
 
     @Composable
     fun LoaderOfFolder() {
@@ -113,27 +113,27 @@ class Editor : AppCompatActivity() {
                 matrix.postRotate(270f)
             }
 
-            if (curImage == null || IS_DEBUG) {
-                val person = BitmapFactory.decodeResource(resources, defaultImgId)
-                curImage = person.copy(person.config, true)
-
-            }
-
+            // TODO: save old size, and then reshape image to this, or even redraw on source image
+            curImage = Bitmap.createScaledBitmap(
+                curImage!!,
+                viewBinding.imageViewEditor.width, viewBinding.imageViewEditor.height, true
+            )
             curImage = Bitmap.createBitmap(
                 curImage!!, 0, 0,
-                minOf(viewBinding.imageViewEditor.width, curImage!!.width),
-                minOf(viewBinding.imageViewEditor.height, curImage!!.height), matrix, true
+                curImage!!.width,
+                curImage!!.height, matrix, true
             )
-
-
             upperBitmap = Bitmap.createBitmap(
                 curImage!!, 0, 0,
-                minOf(viewBinding.imageViewEditor.width, curImage!!.width),
-                minOf(viewBinding.imageViewEditor.height, curImage!!.height), matrix, true
-            )
+                curImage!!.width,
+                curImage!!.height, matrix, true
+            ).copy(Bitmap.Config.ARGB_8888,true)
             upperBitmap!!.eraseColor(Color.TRANSPARENT)
 
             viewBinding.imageViewEditor.setImageBitmap(curImage)
+            viewBinding.imageViewDraw.setImageBitmap(upperBitmap)
+
+            processImage()
         }
 
         viewBinding.folder.setOnClickListener{
@@ -149,17 +149,19 @@ class Editor : AppCompatActivity() {
     }
 
     private fun setFilter(context: Context, name: String) {
-        synchronized(context) {
-//            if (upperBitmap != null) {
-//                upperBitmap!!.eraseColor(Color.TRANSPARENT)
-//            }
-            curImgText = if (curImgText != name) name else ImageEditor.NONE
-            processImage()
-        }
+        val canvas = getCanvas()
+        curImgText = if (curImgText != name) name else ImageEditor.NONE
+        ImageEditor.processRequestEditing(
+            baseContext, curImgText,
+            mapLandMarks, upperBitmap!!, canvas,
+            resources, heightFace, widthFace, curImage!!,
+            mask = mask, maskWidth = maskWidth, maskHeight = maskHeight, drawedThings
+        )
+        reDraw(canvas)
     }
 
 
-    private fun getCanvas(currentImage: Bitmap?): Canvas {
+    private fun getCanvas(): Canvas {
         upperBitmap = Bitmap.createBitmap(
             upperBitmap!!.width,
             upperBitmap!!.height, conf
@@ -168,7 +170,6 @@ class Editor : AppCompatActivity() {
     }
 
     private fun processImage() {
-        val canvas = getCanvas(currentImage = curImage)
         val resized =
             Bitmap.createScaledBitmap(
                 curImage!!, curImage!!.width / MULT_IMAGE,
@@ -180,7 +181,6 @@ class Editor : AppCompatActivity() {
             faceDetector.process(imgML)
                 .addOnSuccessListener { faces ->
                     for (face in faces) {
-                        Log.i("DEBUG", "face finding")
                         for (landmarkId in ImageEditor.useFullLandmarks) {
                             val landmarkObject = face.getLandmark(landmarkId)
                             if (landmarkObject != null) {
@@ -233,24 +233,22 @@ class Editor : AppCompatActivity() {
                         .show()
                 }
         }
-//        Toast.makeText(baseContext, "editing image", Toast.LENGTH_SHORT).show()
-        synchronized(applicationContext) {
-            ImageEditor.processRequestEditing(
-                baseContext, curImgText,
-                mapLandMarks, upperBitmap!!, canvas,
-                resources, heightFace, widthFace, curImage!!,
-                mask = mask, maskWidth = maskWidth, maskHeight = maskHeight, drawedThings
-            )
-            reDraw(canvas)
-        }
-//        viewBinding.imageViewDraw.setImageBitmap(
-//            upperBitmap!!.copy(upperBitmap!!.config, false)
-//        )
+    }
+
+    fun dist(instance: ImgInstance, event: MotionEvent): Float {
+        return (event.x - instance.positionAndSize.leftX) *
+                (event.x - instance.positionAndSize.leftX) +
+                (event.y - instance.positionAndSize.leftY) *
+                (event.y - instance.positionAndSize.leftY)
+    }
+
+    fun isCloseToBound(x: Float, leftX: Int, rightX: Int): Boolean {
+        return (leftX - OFFSET <= x) && ( x <= rightX + OFFSET)
     }
 
     fun isClose(instance: ImgInstance, event: MotionEvent): Boolean {
-        return ((abs(event.x - instance.positionAndSize.leftX) <= OFFSET + instance.positionAndSize.width) and
-                (abs(event.y - instance.positionAndSize.leftY) <= OFFSET + instance.positionAndSize.height))
+        return isCloseToBound(event.x, instance.positionAndSize.leftX, instance.positionAndSize.leftX + instance.positionAndSize.width) &&
+                isCloseToBound(event.y, instance.positionAndSize.leftY, instance.positionAndSize.leftY + instance.positionAndSize.height)
     }
 
     fun reDraw(canvas: Canvas) {
@@ -275,8 +273,6 @@ class Editor : AppCompatActivity() {
         if(event.action == MotionEvent.ACTION_DOWN) {
             return true
         }
-        Log.e("SOME_CONTEXT_INFO_PROCESSING", contextIndex.toString())
-        Log.e("SOME_CONTEXT_INFO_PROCESSING", drawedIndex.toString())
         for(elem in drawedThings) {
             Log.e("SOME_CONTEXT_INFO_PROCESSING", elem.toString())
         }
@@ -297,23 +293,31 @@ class Editor : AppCompatActivity() {
 
         }
         if (!processed) {
+            var minDist = -1f
+            var index = -1
             for ((i, elem) in drawedThings.withIndex()) {
                 if (isClose(elem, event)) {
-                    drawedThings.add(
-                        ImgInstance(
-                            ExtraImgs.CONTEXT_INFO, PositionAndSize(
-                                elem.positionAndSize.leftX,
-                                elem.positionAndSize.leftX, CONTEXT_INFO_SIZE, CONTEXT_INFO_SIZE
-                            )
-                        )
-                    )
-                    contextIndex = drawedThings.size - 1
-                    drawedIndex = i
-                    break
+                    val curDist = dist(elem, event)
+                    if ((index == -1) || ( curDist < minDist)) {
+                        minDist = curDist
+                        index = i
+                    }
                 }
             }
+            if (index != -1 ) {
+                drawedThings.add(
+                    ImgInstance(
+                        ExtraImgs.CONTEXT_INFO, PositionAndSize(
+                            drawedThings[index].positionAndSize.leftX,
+                            drawedThings[index].positionAndSize.leftY, CONTEXT_INFO_SIZE, CONTEXT_INFO_SIZE
+                        )
+                    )
+                )
+                contextIndex = drawedThings.size - 1
+                drawedIndex = index
+            }
         }
-        reDraw(getCanvas(currentImage = curImage))
+        reDraw(getCanvas())
         return true
     }
 
