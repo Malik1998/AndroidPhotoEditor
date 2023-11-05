@@ -321,7 +321,8 @@ class MainActivity : AppCompatActivity() {
             viewBinding.imageViewDraw.setOnTouchListener { v, motionEvent -> processContextInfo(motionEvent)}
 
             viewBinding.imageSaveButton.setOnClickListener {
-                ImageSaver.savePhotoWithBackground(curImage!!, upperBitmap!!, contentResolver)
+                ImageSaver.savePhotoWithBackground(curImage!!.copy(Bitmap.Config.ARGB_8888,true),
+                    upperBitmap!!.copy(Bitmap.Config.ARGB_8888,true), contentResolver)
             }
 
             viewBinding.glassesAdd.setOnClickListener {

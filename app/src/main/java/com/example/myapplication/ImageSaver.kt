@@ -40,7 +40,7 @@ class ImageSaver {
 
 
         fun savePhotoWithBackground(curImage: Bitmap, upperBitmap: Bitmap, contentResolver: ContentResolver) {
-            val canvas = Canvas(curImage.copy(Bitmap.Config.ARGB_8888,true))
+            val canvas = Canvas(curImage)
             canvas.drawBitmap(upperBitmap, 0F,
                 0F, Paint()
             )
