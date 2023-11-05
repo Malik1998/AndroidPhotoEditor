@@ -32,7 +32,7 @@
             </intent-filter>
         </activity>
         <activity
-            android:name=".Editor"
+            android:name=".MainActivityOld"
             android:theme="@style/Theme.AppCompat">
 
         </activity>

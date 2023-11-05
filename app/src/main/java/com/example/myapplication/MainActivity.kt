@@ -2,90 +2,81 @@ package com.example.myapplication
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.content.ContentValues
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
-import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
-import android.graphics.Paint
 import android.graphics.PointF
-import android.net.Uri
+import android.media.ExifInterface
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
-import android.os.Handler
 import android.provider.MediaStore
-import android.util.Log
+import android.view.MotionEvent
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.ImageProxy
-import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.compose.runtime.Composable
 import androidx.core.content.ContextCompat
-import androidx.core.graphics.drawable.toDrawable
-import com.example.myapplication.databinding.ActivityMainBinding
+import com.example.myapplication.ImageEditor.Companion.drawImgPoint
+import com.example.myapplication.databinding.ActivityEditorBinding
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetector
 import com.google.mlkit.vision.face.FaceDetectorOptions
-import com.google.mlkit.vision.face.FaceLandmark
-import com.google.mlkit.vision.pose.Pose
 import com.google.mlkit.vision.pose.PoseDetection
 import com.google.mlkit.vision.pose.PoseDetector
-import com.google.mlkit.vision.pose.PoseLandmark
 import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
 import com.google.mlkit.vision.segmentation.Segmentation
 import com.google.mlkit.vision.segmentation.Segmenter
 import com.google.mlkit.vision.segmentation.selfie.SelfieSegmenterOptions
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import java.io.File
-import java.io.FileOutputStream
-import java.io.OutputStream
-import java.lang.Math.abs
 import java.nio.ByteBuffer
-import java.nio.FloatBuffer
-import java.text.SimpleDateFormat
 import java.util.Collections
-import java.util.Locale
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
 
-typealias ImageListener = (img: Bitmap) -> Unit
 
 class MainActivity : AppCompatActivity() {
-    private lateinit var viewBinding: ActivityMainBinding
+    private lateinit var viewBinding: ActivityEditorBinding
 
-    private val defaultImgId = R.mipmap.female
-    private val IS_DEBUG = false
-
-
-    private val conf: Bitmap.Config = Bitmap.Config.ARGB_8888 // see other conf types
+    @Volatile
+    private var curImage: Bitmap? = null
 
     @Volatile
     private var upperBitmap : Bitmap? = null
 
-
-
-
     @Volatile
-    private var curImage: Bitmap? = null
-    @Volatile
-    private var curImageArray = Collections.synchronizedList(
-        mutableListOf<
-                Pair<Bitmap, Bitmap>
-                >()
-    )
+    private var curImgText = ImageEditor.NONE
+
+    private lateinit var faceDetector: FaceDetector
+    private lateinit var poseDetector: PoseDetector
+    private lateinit var segmenter: Segmenter
+
+    private val defaultImgId = R.mipmap.person_photo
+    private val IS_DEBUG = true
+
+    private val MULT_IMAGE = 2
+
+    private val conf: Bitmap.Config = Bitmap.Config.ARGB_8888 // see other conf types
 
     private val mapLandMarks = Collections.synchronizedMap(hashMapOf<Int, PointF>())
+
+
+    private val drawedThings = Collections.synchronizedList(ArrayList<ImgInstance>())
+    private var contextIndex = -1
+    private var drawedIndex = -1
+
+    private val OFFSET = 10
+
+    private val mapImgs = hashMapOf<ExtraImgs, Int>(
+        ExtraImgs.EYE_LASH to R.mipmap.eye_lash,
+        ExtraImgs.GLASSES to R.mipmap.glasses,
+        ExtraImgs.EARS to R.mipmap.ears,
+        ExtraImgs.CONTEXT_INFO to R.mipmap.remove)
+
 
     @Volatile
     private var mask: ByteBuffer? = null
@@ -93,372 +84,292 @@ class MainActivity : AppCompatActivity() {
     private var maskHeight: Int = 128
 
     @Volatile
-    private var curImgText = ImageEditor.NONE
-
-    @Volatile
-    private var lastUpdate: Long = 0
-    private val UPDATE_LAG: Long = 1000
-    private val LAG_POSE_DETECTION: Long = 100
-
-    private val MIN_OFFSET = 1
-    private val MIN_OFFSET_LANDMARKS = 20
-    private val MULT_CHANGES = 0.97f
-
-    private val MULT_IMAGE = 4
-
-    @Volatile
-    private var isChanged = false
-
-    @Volatile
-    private var isChangedDramatically = false
-
-    @Volatile
     private var heightFace: Int = 0
     @Volatile
     private var widthFace: Int = 0
 
+    private val CONTEXT_INFO_SIZE = 90
 
-    @Volatile
-    private var isBackCamera: Boolean = true
-
-    private lateinit var cameraExecutor: ExecutorService
-
-    private lateinit var faceDetector: FaceDetector
-    private lateinit var poseDetector: PoseDetector
-    private lateinit var segmenter: Segmenter
-
-    private fun setFilter(context: Context, name: String) {
-        synchronized(context) {
-            if (upperBitmap != null) {
-                upperBitmap!!.eraseColor(Color.TRANSPARENT)
-                Log.i("DEBUG", "erased")
+    @Composable
+    fun LoaderOfFolder() {
+        val launcher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+            //When the user has selected a photo, its URI is returned here
+            curImage =  MediaStore.Images.Media.getBitmap(this.getContentResolver(), uri)
+            val exif = ExifInterface(PathUtil.getPath(baseContext, uri))
+            val rotation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
+            val matrix = Matrix()
+            if(rotation == 6) {
+                matrix.postRotate(90f)
+            } else if (rotation == 3) {
+                matrix.postRotate(180f)
+            } else if (rotation == 8) {
+                matrix.postRotate(270f)
             }
-            curImgText = if (curImgText != name) name else ImageEditor.NONE
-            isChanged = true
-            isChangedDramatically = true
+
+            // TODO: save old size, and then reshape image to this, or even redraw on source image
+            curImage = Bitmap.createScaledBitmap(
+                curImage!!,
+                viewBinding.imageViewEditor.width, viewBinding.imageViewEditor.height, true
+            )
+            curImage = Bitmap.createBitmap(
+                curImage!!, 0, 0,
+                curImage!!.width,
+                curImage!!.height, matrix, true
+            )
+            upperBitmap = Bitmap.createBitmap(
+                curImage!!, 0, 0,
+                curImage!!.width,
+                curImage!!.height, matrix, true
+            ).copy(Bitmap.Config.ARGB_8888,true)
+            upperBitmap!!.eraseColor(Color.TRANSPARENT)
+
+            viewBinding.imageViewEditor.setImageBitmap(curImage)
+            viewBinding.imageViewDraw.setImageBitmap(upperBitmap)
+
+            processImage()
+        }
+
+        viewBinding.folder.setOnClickListener{
+            launcher.launch(
+                PickVisualMediaRequest(
+                    //Here we request only photos. Change this to .ImageAndVideo if
+                    //you want videos too.
+                    //Or use .VideoOnly if you only want videos.
+                    mediaType = ActivityResultContracts.PickVisualMedia.ImageOnly
+                )
+            )
         }
     }
 
+    private fun setFilter(context: Context, name: String) {
+        val canvas = getCanvas()
+        curImgText = if (curImgText != name) name else ImageEditor.NONE
+        ImageEditor.processRequestEditing(
+            baseContext, curImgText,
+            mapLandMarks, upperBitmap!!, canvas,
+            resources, heightFace, widthFace, curImage!!,
+            mask = mask, maskWidth = maskWidth, maskHeight = maskHeight, drawedThings
+        )
+        reDraw(canvas)
+    }
+
+
+    private fun getCanvas(): Canvas {
+        upperBitmap = Bitmap.createBitmap(
+            upperBitmap!!.width,
+            upperBitmap!!.height, conf
+        )
+        return Canvas(upperBitmap!!)
+    }
+
+    private fun processImage() {
+        val resized =
+            Bitmap.createScaledBitmap(
+                curImage!!, curImage!!.width / MULT_IMAGE,
+                curImage!!.height / MULT_IMAGE, true
+            )
+        val imgML = InputImage.fromBitmap(resized, 0)
+
+        if (curImgText != ImageEditor.ASS) {
+            faceDetector.process(imgML)
+                .addOnSuccessListener { faces ->
+                    for (face in faces) {
+                        for (landmarkId in ImageEditor.useFullLandmarks) {
+                            val landmarkObject = face.getLandmark(landmarkId)
+                            if (landmarkObject != null) {
+                                mapLandMarks[landmarkId] =
+                                    landmarkObject.position
+                                mapLandMarks[landmarkId]!!.x *= MULT_IMAGE
+                                mapLandMarks[landmarkId]!!.y *= MULT_IMAGE
+                                heightFace =
+                                    face.boundingBox.height() * MULT_IMAGE
+                                widthFace =
+                                    face.boundingBox.width() * MULT_IMAGE
+                            }
+                        }
+                    }
+                }
+                .addOnFailureListener { e ->
+                    Toast.makeText(baseContext, "${e}", Toast.LENGTH_SHORT)
+                        .show()
+                }
+        } else {
+            poseDetector.process(imgML)
+                .addOnSuccessListener { results ->
+                    for (landmarkId in ImageEditor.bodyLandmarks) {
+                        val landmarkObject = results.getPoseLandmark(landmarkId)
+                        if (landmarkObject != null) {
+                            mapLandMarks[landmarkId] =
+                                landmarkObject.position
+                            mapLandMarks[landmarkId]!!.x *= MULT_IMAGE
+                            mapLandMarks[landmarkId]!!.y *= MULT_IMAGE
+                        }
+                    }
+                }
+                .addOnFailureListener { e ->
+                    Toast.makeText(baseContext, "${e}", Toast.LENGTH_SHORT)
+                        .show()
+                }
+
+            val imgMLSegmenter = InputImage.fromBitmap(curImage!!, 0)
+            segmenter.process(imgMLSegmenter)
+                .addOnSuccessListener { results ->
+                    mask = results.buffer
+                    maskWidth = results.width
+                    maskHeight = results.height
+                    if (mask != null) {
+                        mask!!.rewind()
+                    }
+                }
+                .addOnFailureListener { e ->
+                    Toast.makeText(baseContext, "${e}", Toast.LENGTH_SHORT)
+                        .show()
+                }
+        }
+    }
+
+    fun dist(instance: ImgInstance, event: MotionEvent): Float {
+        return (event.x - instance.positionAndSize.leftX) *
+                (event.x - instance.positionAndSize.leftX) +
+                (event.y - instance.positionAndSize.leftY) *
+                (event.y - instance.positionAndSize.leftY)
+    }
+
+    fun isCloseToBound(x: Float, leftX: Int, rightX: Int): Boolean {
+        return (leftX - OFFSET <= x) && ( x <= rightX + OFFSET)
+    }
+
+    fun isClose(instance: ImgInstance, event: MotionEvent): Boolean {
+        return isCloseToBound(event.x, instance.positionAndSize.leftX, instance.positionAndSize.leftX + instance.positionAndSize.width) &&
+                isCloseToBound(event.y, instance.positionAndSize.leftY, instance.positionAndSize.leftY + instance.positionAndSize.height)
+    }
+
+    fun reDraw(canvas: Canvas) {
+        for (elem in drawedThings) {
+            val curPoint = PointF(elem.positionAndSize.leftX.toFloat(), elem.positionAndSize.leftY.toFloat())
+            drawImgPoint(curPoint, curPoint, canvas,
+                BitmapFactory.decodeResource(
+                    resources,
+                    mapImgs.get(elem.extraImg)!!
+                ),
+                elem.positionAndSize.mirror,
+                elem.positionAndSize.width,
+                elem.positionAndSize.height,
+                elem.positionAndSize.leftX.toFloat(),
+                elem.positionAndSize.leftY.toFloat()
+            )
+        }
+        viewBinding.imageViewDraw.setImageBitmap(upperBitmap)
+    }
+    
+    fun processContextInfo(event: MotionEvent): Boolean {
+        if(event.action == MotionEvent.ACTION_DOWN) {
+            return true
+        }
+        var processed = false
+        if (contextIndex != -1) {
+            val contInfo = drawedThings[contextIndex]
+            if(isClose(drawedThings[contextIndex], event)) {
+                val toDel = drawedThings[drawedIndex]
+                drawedThings.remove(toDel)
+                processed = true
+            }
+            drawedThings.remove(contInfo)
+            drawedIndex = -1
+            contextIndex = -1
+        }
+        if (!processed) {
+            var minDist = -1f
+            var index = -1
+            for ((i, elem) in drawedThings.withIndex()) {
+                if (isClose(elem, event)) {
+                    val curDist = dist(elem, event)
+                    if ((index == -1) || ( curDist < minDist)) {
+                        minDist = curDist
+                        index = i
+                    }
+                }
+            }
+            if (index != -1 ) {
+                drawedThings.add(
+                    ImgInstance(
+                        ExtraImgs.CONTEXT_INFO, PositionAndSize(
+                            drawedThings[index].positionAndSize.leftX,
+                            drawedThings[index].positionAndSize.leftY, CONTEXT_INFO_SIZE, CONTEXT_INFO_SIZE
+                        )
+                    )
+                )
+                contextIndex = drawedThings.size - 1
+                drawedIndex = index
+            }
+        }
+        reDraw(getCanvas())
+        return true
+    }
+
+
+    @SuppressLint("ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        viewBinding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(viewBinding.root)
+        viewBinding = ActivityEditorBinding.inflate(layoutInflater)
 
-        // Request camera permissions
-        if (allPermissionsGranted()) {
-            startCamera()
-        } else {
+        setContent{
+            setContentView(viewBinding.root)
+            viewBinding
+            LoaderOfFolder()
+
+            viewBinding.imageViewDraw.setOnTouchListener { v, motionEvent -> processContextInfo(motionEvent)}
+
+            viewBinding.imageSaveButton.setOnClickListener {
+                ImageSaver.savePhotoWithBackground(curImage!!, upperBitmap!!, contentResolver)
+            }
+
+            viewBinding.glassesAdd.setOnClickListener {
+                setFilter(baseContext, ImageEditor.GLASSES)
+            }
+
+            viewBinding.eyeLashes.setOnClickListener {
+                setFilter(baseContext, ImageEditor.EYE_LASH)
+            }
+
+            viewBinding.ears.setOnClickListener {
+                setFilter(baseContext, ImageEditor.EARS)
+            }
+
+            viewBinding.betaVersion.setOnClickListener {
+                setFilter(baseContext, ImageEditor.ASS)
+            }
+
+            viewBinding.lips.setOnClickListener {
+                setFilter(baseContext, ImageEditor.LIPS)
+            }
+
+            val realTimeOpts = FaceDetectorOptions.Builder()
+                .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
+                .setContourMode(FaceDetectorOptions.CONTOUR_MODE_NONE)
+                .build()
+
+            faceDetector = FaceDetection.getClient(realTimeOpts)
+
+            val options = PoseDetectorOptions.Builder()
+                .setDetectorMode(PoseDetectorOptions.STREAM_MODE)
+                .build()
+            poseDetector = PoseDetection.getClient(options)
+
+            val segmentOptions =
+                SelfieSegmenterOptions.Builder()
+                    .setDetectorMode(SelfieSegmenterOptions.STREAM_MODE)
+                    .enableRawSizeMask()
+                    .build()
+            segmenter = Segmentation.getClient(segmentOptions)
+
+        }
+
+
+        if (!allPermissionsGranted()) {
             requestPermissions()
         }
 
-        // Set up the listeners for take photo and video capture buttons
-        viewBinding.imageCaptureButton.setOnClickListener { takePhoto() }
-
-        cameraExecutor = Executors.newSingleThreadExecutor()
-
-        viewBinding.imageView.setOnClickListener {
-            updateImg()
-            isChanged = true
-            isChangedDramatically = true
-        }
-
-        viewBinding.openEditor.setOnClickListener {
-            val intent = Intent(this, Editor::class.java)
-            startActivity(intent)
-        }
-
-        viewBinding.glassesAdd.setOnClickListener {
-            setFilter(baseContext, ImageEditor.GLASSES)
-        }
-
-        viewBinding.eyeLashes.setOnClickListener {
-            setFilter(baseContext, ImageEditor.EYE_LASH)
-        }
-
-        viewBinding.ears.setOnClickListener {
-            setFilter(baseContext, ImageEditor.EARS)
-        }
-
-        viewBinding.betaVersion.setOnClickListener {
-            setFilter(baseContext, ImageEditor.ASS)
-        }
-
-        viewBinding.lips.setOnClickListener {
-            setFilter(baseContext, ImageEditor.LIPS)
-        }
-
-        viewBinding.changeCamera.setOnClickListener {
-            synchronized(baseContext) {
-                if (upperBitmap != null) {
-                    upperBitmap!!.eraseColor(Color.TRANSPARENT)
-                    Log.i("DEBUG", "erased")
-                }
-                isChanged = true
-                isChangedDramatically = true
-            }
-            isBackCamera = !isBackCamera
-            startCamera()
-
-        }
-
-        val realTimeOpts = FaceDetectorOptions.Builder()
-            .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
-            .setContourMode(FaceDetectorOptions.CONTOUR_MODE_NONE)
-            .build()
-
-        faceDetector = FaceDetection.getClient(realTimeOpts)
-
-        val options = PoseDetectorOptions.Builder()
-            .setDetectorMode(PoseDetectorOptions.STREAM_MODE)
-            .build()
-        poseDetector = PoseDetection.getClient(options)
-
-        val segmentOptions =
-            SelfieSegmenterOptions.Builder()
-                .setDetectorMode(SelfieSegmenterOptions.STREAM_MODE)
-                .enableRawSizeMask()
-                .build()
-        segmenter = Segmentation.getClient(segmentOptions)
-    }
-
-    private fun takePhoto() {
-        if(curImage != null) {
-            synchronized(this) {
-                curImageArray.add(
-                    Pair(curImage!!.copy(curImage!!.config, true),
-                        upperBitmap!!.copy(curImage!!.config, false)))
-            }
-
-            runBlocking {
-                launch(Dispatchers.Default) {
-                    val pairBitmap = curImageArray.removeLast()
-                    ImageSaver.savePhotoWithBackground(pairBitmap.first, pairBitmap.second, contentResolver)
-                }
-            }
-        }
-    }
-
-    private fun updateImg() {
-        lastUpdate = 0
-    }
-
-    private fun startCamera() {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-
-        cameraProviderFuture.addListener({
-            // Used to bind the lifecycle of cameras to the lifecycle owner
-            val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
-
-            val imageAnalyzer = ImageAnalysis.Builder()
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build()
-                .also {
-                    it.setAnalyzer(cameraExecutor, ImageAnalyzer(resources = resources, listener = { img ->
-                        val person = BitmapFactory.decodeResource(resources, defaultImgId)
-                        val currentImage = if (IS_DEBUG) person.copy(person.config, true) else img
-
-
-                        synchronized(baseContext) {
-                            curImage = currentImage.copy(currentImage.config, true)
-                            if (upperBitmap == null) {
-                                upperBitmap = Bitmap.createBitmap(
-                                    currentImage.width,
-                                    currentImage.height, conf
-                                )
-                            }
-                        }
-
-                        val mainHandlerBack = Handler(getMainLooper());
-
-                        val myRunnableBack = Runnable() {
-                            synchronized(baseContext) {
-                                viewBinding.imageView.setImageBitmap(curImage)
-                                if (upperBitmap == null && (isChanged || isChangedDramatically)) {
-                                    viewBinding.imageViewDraw.setImageBitmap(upperBitmap)
-                                    isChangedDramatically = false
-                                }
-                            }
-                        }
-                        mainHandlerBack.post(myRunnableBack)
-
-                        var canvas = Canvas(upperBitmap!!)
-                        synchronized(baseContext) {
-                            canvas = Canvas(upperBitmap!!) //Canvas(currentImage)
-                        }
-                        Log.i("DEBUG", curImgText)
-                        if (curImgText == ImageEditor.NONE) {
-                            return@ImageAnalyzer
-                        }
-                        val currentMills = System.currentTimeMillis()
-                        Log.i("DEBUG", "${currentMills - lastUpdate}")
-                        if (currentMills - lastUpdate >= LAG_POSE_DETECTION) {
-                            val resized =
-                                Bitmap.createScaledBitmap(
-                                    currentImage, currentImage.width / MULT_IMAGE,
-                                    currentImage.height / MULT_IMAGE, true
-                                )
-                            val imgML = InputImage.fromBitmap(resized, 0)
-
-                            if (curImgText != ImageEditor.ASS) {
-                                faceDetector.process(imgML)
-                                    .addOnSuccessListener { faces ->
-//                                        Toast.makeText(baseContext, "HEUTA! ${faces.size}", Toast.LENGTH_SHORT).show()
-                                        for (face in faces) {
-                                            Log.i("DEBUG", "face finding")
-                                            for (landmarkId in ImageEditor.useFullLandmarks) {
-                                                val landmarkObject = face.getLandmark(landmarkId)
-                                                if (landmarkObject != null) {
-                                                    val prev = mapLandMarks[landmarkId]
-                                                    mapLandMarks[landmarkId] =
-                                                        landmarkObject.position
-                                                    mapLandMarks[landmarkId]!!.x *= MULT_IMAGE
-                                                    mapLandMarks[landmarkId]!!.y *= MULT_IMAGE
-                                                    heightFace =
-                                                        face.boundingBox.height() * MULT_IMAGE
-                                                    widthFace =
-                                                        face.boundingBox.width() * MULT_IMAGE
-                                                    if (prev == null) {
-                                                        isChangedDramatically = true
-                                                    } else {
-                                                        if (abs(prev.x - mapLandMarks[landmarkId]!!.x) >= MIN_OFFSET ||
-                                                            abs(prev.y - mapLandMarks[landmarkId]!!.y) >= MIN_OFFSET
-                                                        ) {
-                                                            Log.i(
-                                                                "debug",
-                                                                "isChangedDramatically = ${isChangedDramatically}"
-                                                            )
-                                                            mapLandMarks[landmarkId]!!.x =
-                                                                mapLandMarks[landmarkId]!!.x * MULT_CHANGES +
-                                                                        (1 - MULT_CHANGES) * prev.x
-
-                                                            mapLandMarks[landmarkId]!!.y =
-                                                                mapLandMarks[landmarkId]!!.y * MULT_CHANGES +
-                                                                        (1 - MULT_CHANGES) * prev.y
-                                                            isChangedDramatically = true
-                                                        }
-                                                    }
-
-                                                    isChanged = true
-                                                    lastUpdate = currentMills
-                                                }
-                                            }
-                                        }
-                                    }
-                                    .addOnFailureListener { e ->
-                                        Toast.makeText(baseContext, "${e}", Toast.LENGTH_SHORT)
-                                            .show()
-                                    }
-                            } else {
-                                poseDetector.process(imgML)
-                                    .addOnSuccessListener { results ->
-                                        for (landmarkId in ImageEditor.bodyLandmarks) {
-                                            val landmarkObject = results.getPoseLandmark(landmarkId)
-                                            if (landmarkObject != null) {
-                                                val prev = mapLandMarks[landmarkId]
-                                                mapLandMarks[landmarkId] =
-                                                    landmarkObject.position
-                                                mapLandMarks[landmarkId]!!.x *= MULT_IMAGE
-                                                mapLandMarks[landmarkId]!!.y *= MULT_IMAGE
-                                                if (prev == null) {
-                                                    isChangedDramatically = true
-                                                } else {
-                                                    if (abs(prev.x - mapLandMarks[landmarkId]!!.x) >= MIN_OFFSET_LANDMARKS ||
-                                                        abs(prev.y - mapLandMarks[landmarkId]!!.y) >= MIN_OFFSET_LANDMARKS
-                                                    ) {
-                                                        Log.i(
-                                                            "debug",
-                                                            "isChangedDramatically = ${isChangedDramatically}"
-                                                        )
-                                                        mapLandMarks[landmarkId]!!.x =
-                                                            mapLandMarks[landmarkId]!!.x * MULT_CHANGES +
-                                                                    (1 - MULT_CHANGES) * prev.x
-
-                                                        mapLandMarks[landmarkId]!!.y =
-                                                            mapLandMarks[landmarkId]!!.y * MULT_CHANGES +
-                                                                    (1 - MULT_CHANGES) * prev.y
-                                                        isChangedDramatically = true
-                                                    }
-                                                }
-
-                                                isChanged = true
-                                                lastUpdate = currentMills
-                                            }
-                                        }
-                                    }
-                                    .addOnFailureListener { e ->
-                                        Toast.makeText(baseContext, "${e}", Toast.LENGTH_SHORT)
-                                            .show()
-                                    }
-
-                                val imgMLSegmenter = InputImage.fromBitmap(currentImage, 0)
-                                segmenter.process(imgMLSegmenter)
-                                    .addOnSuccessListener { results ->
-                                        mask = results.buffer
-                                        maskWidth = results.width
-                                        maskHeight = results.height
-                                        if (mask != null) {
-                                            mask!!.rewind()
-                                        }
-                                    }
-                                    .addOnFailureListener { e ->
-                                        Toast.makeText(baseContext, "${e}", Toast.LENGTH_SHORT)
-                                            .show()
-                                    }
-                            }
-                        }
-                        if (curImgText != ImageEditor.NONE && (isChanged || isChangedDramatically)) {
-                            Log.i("DEBUG", "isChanged")
-                            ImageEditor.processRequestEditing(
-                                baseContext, curImgText,
-                                mapLandMarks, upperBitmap!!, canvas,
-                                resources, heightFace, widthFace, currentImage,
-                                mask=mask, maskWidth = maskWidth, maskHeight = maskHeight
-                            )
-                        }
-
-                        if (currentMills - lastUpdate >= UPDATE_LAG && !isChanged) {
-                            Log.i("DEBUG", "erased")
-                            for (landmarkId in ImageEditor.useFullLandmarks) {
-                                mapLandMarks[landmarkId] = null
-                            }
-                            if (upperBitmap != null) {
-                                upperBitmap!!.eraseColor(Color.TRANSPARENT)
-                            }
-                        }
-
-                        val mainHandler = Handler(getMainLooper())
-
-                        Log.i("debug", "isChangedDramatically = ${isChangedDramatically}")
-                        if (isChangedDramatically) {
-                            val myRunnable = Runnable() {
-                                    synchronized(baseContext) {
-                                        viewBinding.imageViewDraw.setImageBitmap(
-                                            upperBitmap!!.copy(upperBitmap!!.config, false)
-                                        )
-                                        isChangedDramatically = false
-                                }
-                            }
-                            mainHandler.post(myRunnable)
-                            isChangedDramatically = false
-                        }
-                    }))
-                }
-
-            val cameraSelector = if(isBackCamera)  {CameraSelector.DEFAULT_BACK_CAMERA } else {CameraSelector.DEFAULT_FRONT_CAMERA}
-
-            try {
-                // Unbind use cases before rebinding
-                cameraProvider.unbindAll()
-
-                // Bind use cases to camera
-                cameraProvider.bindToLifecycle(
-                    this, cameraSelector, imageAnalyzer)
-
-            } catch(exc: Exception) {
-                Log.e(TAG, "Use case binding failed", exc)
-            }
-
-        }, ContextCompat.getMainExecutor(this))
     }
 
     private fun requestPermissions() {
@@ -467,12 +378,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
         ContextCompat.checkSelfPermission(
-            baseContext, it) == PackageManager.PERMISSION_GRANTED
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        cameraExecutor.shutdown()
+            baseContext, it
+        ) == PackageManager.PERMISSION_GRANTED
     }
 
     companion object {
@@ -491,7 +398,8 @@ class MainActivity : AppCompatActivity() {
 
     private val activityResultLauncher =
         registerForActivityResult(
-            ActivityResultContracts.RequestMultiplePermissions())
+            ActivityResultContracts.RequestMultiplePermissions()
+        )
         { permissions ->
             // Handle Permission granted/rejected
             var permissionGranted = true
@@ -500,34 +408,11 @@ class MainActivity : AppCompatActivity() {
                     permissionGranted = false
             }
             if (!permissionGranted) {
-                Toast.makeText(baseContext,
+                Toast.makeText(
+                    baseContext,
                     "Permission request denied",
-                    Toast.LENGTH_SHORT).show()
-            } else {
-                startCamera()
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
-
-    private class ImageAnalyzer(private val listener: ImageListener, private val resources: Resources) : ImageAnalysis.Analyzer {
-
-        @SuppressLint("UnsafeOptInUsageError")
-        override fun analyze(image: ImageProxy) {
-
-            val matrix = Matrix()
-
-
-//            listener(Bitmap.createBitmap( BitmapFactory.decodeResource(resources, R.mipmap.person_photo), 0, 0,
-//                image.width, image.height, matrix, true))
-
-            matrix.postRotate(image.imageInfo.rotationDegrees.toFloat())
-
-
-            listener(Bitmap.createBitmap( image.toBitmap(), 0, 0,
-                image.width, image.height, matrix, true))
-
-            image.close()
-
-        }
-
-    }
 }

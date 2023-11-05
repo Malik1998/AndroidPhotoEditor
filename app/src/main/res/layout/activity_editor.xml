@@ -6,7 +6,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:id="@+id/parent_layout"
-    tools:context=".Editor">
+    tools:context=".MainActivity">
 
     <ImageView
         android:id="@+id/imageViewEditor"
